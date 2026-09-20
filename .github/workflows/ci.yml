@@ -1,0 +1,54 @@
+name: ci
+
+# Everything this repository can check about itself, which is more than it looks.
+#
+# There is no database, no API and no server-side secret here — the site is static pages plus one
+# client component that reads two public GitHub release feeds. So the job is a typecheck, a lint,
+# and the one check that is not about code at all: that the legal documents published here are the
+# ones the desktop application records consent against.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck + lint + legal
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # FIRST, AND ON ITS OWN. This is the only failure here that is about what the public reads
+      # rather than about code, and it should be legible in the job list rather than buried inside
+      # a build step. `prebuild` runs it too, so a deploy cannot skip it — this step is what makes
+      # it visible on a pull request, before anyone deploys.
+      - name: The legal documents are the ones that were written
+        run: npm run verify:legal
+
+      - run: npm run typecheck
+
+      # A RATCHET, NOT A GATE. This repository was extracted with 20 eslint errors and 2 warnings —
+      # real, pre-existing, and outside the code it was extracted to serve. A blocking lint would
+      # make this job red from the first push, and a CI that is always red is one nobody reads: the
+      # next genuine failure would arrive in a job that was already failing. So the count is
+      # committed in `lint-baseline.json` and this fails when it goes UP. Lowering it is a failure
+      # too, on purpose — a fix and its new baseline belong in the same commit.
+      - run: npm run lint:ratchet
+
+      # The build runs `prebuild` again on its way past. That repetition is deliberate: the step
+      # above proves the check passes, and this proves the check is actually wired into the build
+      # that Vercel runs. Removing it from `package.json` would leave the step above green.
+      - run: npm run build

@@ -1,5 +1,5 @@
 {
-  "name": "@voidcode/web",
+  "name": "voidcode-web",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -10,6 +10,8 @@
     "verify:legal": "node scripts/check-legal-digest.mjs",
     "start": "next start",
     "lint": "eslint",
+    "//lint:ratchet": "Lints and fails only if the problem count exceeds the committed baseline. This repository was extracted with 20 errors that are real, pre-existing and outside the code it was extracted to serve; a blocking lint would make CI red from the first push, and a CI that is always red is one nobody reads. See scripts/lint-ratchet.mjs.",
+    "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf .next node_modules"
   },

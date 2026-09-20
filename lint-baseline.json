@@ -1,0 +1,5 @@
+{
+  "//": "What this repository was extracted with. See scripts/lint-ratchet.mjs for why the count is tolerated rather than fixed, and why lowering it is part of the same commit as a fix. Only meaningful alongside a committed package-lock.json: the same source linted 18 errors under the monorepo's resolved plugin versions and 20 under a fresh install.",
+  "errors": 20,
+  "warnings": 2
+}

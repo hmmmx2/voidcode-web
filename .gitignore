@@ -1,0 +1,24 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Vercel's local link and pulled environment
+.vercel
+
+# Next writes this on every build from tsconfig; committing it causes conflicts for no benefit.
+next-env.d.ts
+
+# ── Environment ──────────────────────────────────────────────────────────────
+#
+# `.env*` catches `.env.local`, which is where a real configuration goes. The negations below are
+# LOAD-BEARING: in the repository this was extracted from, a bare `.env*` swallowed the documented
+# template as well, so `.env.example` was never committed at all and a fresh clone had to
+# reverse-engineer every variable from the source. Keep the negation whenever the rule changes.
+.env*
+!.env.example
+
+# OS noise
+.DS_Store
+Thumbs.db
