@@ -22,3 +22,11 @@ next-env.d.ts
 # OS noise
 .DS_Store
 Thumbs.db
+
+# GENERATED AT BUILD TIME by scripts/resolve-release.mjs, and deliberately not committed.
+#
+# It records whether a release exists right now. Committing it would freeze that answer into the
+# repository and make it wrong the moment a release is published or deleted -- a second source of
+# truth for the one fact the download button depends on, which is the mistake DownloadSection's
+# header already argues against for checksums.
+src/generated/

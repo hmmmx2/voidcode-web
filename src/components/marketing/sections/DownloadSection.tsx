@@ -11,6 +11,15 @@ import {
 } from "@/components/marketing/primitives/SectionShell";
 import { Pill } from "@/components/ui/Pill";
 import { Reveal } from "@/components/motion/Reveal";
+/**
+ * What the BUILD found, written by `scripts/resolve-release.mjs`.
+ *
+ * This is the baseline the page starts from, and the reason it can be right on first paint instead
+ * of flickering through "Checking for a release…". More importantly it is the only thing that can
+ * tell "no release exists" from "this visitor could not ask" — a distinction the client cannot
+ * make, and getting it wrong shipped a download button that returned 404. See the header below.
+ */
+import baked from "@/generated/release.json";
 
 /**
  * Where a visitor actually gets the application.
@@ -102,7 +111,7 @@ interface Kind {
   /**
    * The VERSION-LESS copy of this installer, which `release.yml`'s `distribute` job uploads
    * alongside the versioned one. It is the whole reason a download can be offered without an
-   * API call — see `stableUrl` below.
+   * API call: `scripts/resolve-release.mjs` resolves it at build time and bakes the URL in.
    */
   stableName: string;
   /**
@@ -224,19 +233,19 @@ interface Release {
 type Feed =
   | { status: "loading" }
   /**
-   * `answered` separates the two cases that look identical and must not be treated alike.
+   * `offerReleasesPage` is what to DO about it, which is the only thing the panel needs.
    *
-   * TRUE means GitHub replied and said there is nothing — a 404 for a repository with no release,
-   * or a release carrying no installer for this platform. Believe it: there is no file, and any
-   * link would 404.
+   * It replaced a boolean called `answered`, and the rename is the fix. `answered` recorded
+   * whether GitHub had replied, and the panel then inferred an action from it — offering the
+   * version-less asset URL whenever the reply had failed. That inference was wrong in exactly the
+   * state this site launched in: rate-limited AND nothing published, where "GitHub did not answer"
+   * does not imply "a release is there". A visitor clicked the button and got `404 Not Found`.
    *
-   * FALSE means the question could not be asked — rate-limited, offline, or an error. A release may
-   * well be sitting there, so the version-less address is offered instead of a dead button.
-   *
-   * Without this distinction the fallback would have offered a download before the first release
-   * existed, which is the precise failure the fallback was added to avoid, pointed the other way.
+   * Now the decision is made where the facts are, and the field carries the decision. TRUE offers
+   * the repository's `/releases` page, which answers 200 whether or not anything is published.
+   * FALSE offers nothing, because nothing exists to offer.
    */
-  | { status: "unavailable"; reason: string; answered: boolean }
+  | { status: "unavailable"; reason: string; offerReleasesPage: boolean }
   | { status: "ready"; release: Release; found: Map<string, Asset> };
 
 type State = { mac: Feed; win: Feed };
@@ -323,11 +332,72 @@ function remember(os: Os, repo: string, release: Release): void {
   }
 }
 
+/**
+ * The build's answer, as a `Feed`.
+ *
+ * `published` becomes a `ready` feed carrying the version-less URLs, so a visitor who cannot reach
+ * the API still gets a real download with a real size beside it — which is the whole point, and the
+ * reason the client fetch is now an enhancement rather than a dependency.
+ *
+ * `none` becomes a refusal that offers nothing, because GitHub said there is nothing.
+ *
+ * `unknown` is the case worth reading twice: the BUILD could not ask either, so NOTHING is known
+ * about whether a release exists. It offers the repository's releases page, which answers 200
+ * whether or not anything is published — never an asset URL, which is precisely the guess that
+ * produced a 404 for a real visitor.
+ */
+function bakedFeed(os: Os): Feed {
+  const entry = baked[os] as {
+    state: "published" | "none" | "unknown";
+    repo?: string;
+    tag?: string | null;
+    publishedAt?: string | null;
+    sizes?: Record<string, number | null>;
+    why?: string;
+  };
+
+  if (entry.state === "published" && entry.repo !== undefined) {
+    const found = new Map<string, Asset>();
+    for (const kind of KINDS.filter((candidate) => candidate.os === os)) {
+      const size = entry.sizes?.[kind.stableName];
+      found.set(key(kind), {
+        name: kind.stableName,
+        size: typeof size === "number" ? size : 0,
+        browser_download_url: `https://github.com/${entry.repo}/releases/latest/download/${kind.stableName}`,
+      });
+    }
+    return {
+      status: "ready",
+      release: { tag_name: entry.tag ?? undefined, published_at: entry.publishedAt ?? undefined },
+      found,
+    };
+  }
+
+  if (entry.state === "none") {
+    return {
+      status: "unavailable",
+      reason: "No release has been published yet.",
+      offerReleasesPage: false,
+    };
+  }
+
+  return {
+    status: "unavailable",
+    reason: "The release list could not be read at build time, so there may be a newer download.",
+    offerReleasesPage: true,
+  };
+}
+
 export function DownloadSection() {
-  const [state, setState] = useState<State>({
-    mac: { status: "loading" },
-    win: { status: "loading" },
-  });
+  /**
+   * STARTS FROM THE BUILD'S ANSWER, not from `loading`.
+   *
+   * Two things follow. The first paint is already correct, so nobody reads "Checking for a
+   * release…" for a round trip. And when the client fetch below cannot run at all — rate-limited,
+   * offline — the page falls back to something GitHub actually said, at build time, rather than to
+   * an inference from a failed request.
+   */
+  const [state, setState] = useState<State>({ mac: bakedFeed("mac"), win: bakedFeed("win") });
   const [copied, setCopied] = useState<string | null>(null);
   /** The visitor's platform, resolved independently of the release feed — it is known offline. */
   const [detected, setDetected] = useState<string | null>(null);
@@ -348,15 +418,8 @@ export function DownloadSection() {
     /** One platform's feed, resolved to a `Feed` rather than thrown. */
     const loadOne = async (os: Os): Promise<Feed> => {
       const repo = repoName(os);
-      if (repo === null) {
-        return {
-          status: "unavailable",
-          reason:
-            "The first release has not been published yet, so there is nothing to download here.",
-          // No repository configured. Nothing can be constructed, authoritative or not.
-          answered: true,
-        };
-      }
+      // No repository configured here either, so there is nothing this fetch could add.
+      if (repo === null) return bakedFeed(os);
 
       let release = cached(os, repo);
       if (release === null) {
@@ -365,36 +428,31 @@ export function DownloadSection() {
             headers: { accept: "application/vnd.github+json" },
           });
           if (response.status === 404) {
-            // GitHub ANSWERED: this repository has no published release. Authoritative.
+            /*
+             * GitHub ANSWERED: no published release. Believed over the build's answer even when
+             * the build said otherwise — a release that existed at build time and 404s now has
+             * been deleted, and the live answer is the true one.
+             */
             return {
               status: "unavailable",
               reason: "No release has been published yet.",
-              answered: true,
+              offerReleasesPage: true,
             };
           }
-          if (response.status === 403 || response.status === 429) {
-            return {
-              status: "unavailable",
-              reason: "GitHub is rate-limiting this network, so the file list could not be read.",
-              // Could not ask. A release may be there; offer the version-less address.
-              answered: false,
-            };
-          }
-          if (!response.ok) {
-            return {
-              status: "unavailable",
-              reason: "The release list could not be read just now.",
-              answered: false,
-            };
-          }
+          /*
+           * COULD NOT ASK -> KEEP THE BUILD'S ANSWER, for rate limits (60 an hour per IP, which a
+           * shared network exhausts) and for anything else that is not a clean reply.
+           *
+           * This is the simplification that removed a whole fallback mechanism. The build already
+           * resolved the version-less URLs and their sizes, so there is nothing to reconstruct and
+           * nothing to guess: a throttled visitor sees exactly what a visitor at deploy time saw.
+           */
+          if (!response.ok) return bakedFeed(os);
           release = (await response.json()) as Release;
           remember(os, repo, release);
         } catch {
-          return {
-            status: "unavailable",
-            reason: "Could not reach GitHub to read the release list.",
-            answered: false,
-          };
+          // Offline, DNS, blocked — same rule: the build's answer stands.
+          return bakedFeed(os);
         }
       }
 
@@ -410,9 +468,9 @@ export function DownloadSection() {
         return {
           status: "unavailable",
           reason: "The latest release does not carry an installer for this platform.",
-          // GitHub answered and the file is not in the release. Authoritative — a version-less
-          // link would point at the same absent file.
-          answered: true,
+          // GitHub answered and the file is not in the release. A version-less link would point at
+          // the same absent file, so the releases page is the only honest offer.
+          offerReleasesPage: true,
         };
       }
       return { status: "ready", release, found };
@@ -432,13 +490,9 @@ export function DownloadSection() {
       const settle = (result: PromiseSettledResult<Feed>): Feed =>
         result.status === "fulfilled"
           ? result.value
-          : {
-              status: "unavailable",
-              reason: "The release list could not be read just now.",
-              // A rejection here means `loadOne` threw rather than resolving a refusal, so nothing
-              // was learned about whether a release exists. Not authoritative.
-              answered: false,
-            };
+          // A rejection means `loadOne` threw rather than resolving a refusal, so nothing was
+          // learned. Same rule as every other failure: the build's answer stands.
+          : bakedFeed(result === mac ? "mac" : "win");
       setState({ mac: settle(mac), win: settle(win) });
     });
 
@@ -559,36 +613,24 @@ export function DownloadSection() {
               const primary = primaryKind === null ? undefined : found.get(key(primaryKind));
 
               /**
-               * A download that does not need the API to have answered.
+               * WHERE THE VERSION-LESS URL WENT, because this block used to construct one here and
+               * that was the bug.
                *
-               * WHY THIS EXISTS. The feed is `api.github.com` read from the VISITOR'S browser, and
-               * unauthenticated requests there are limited to 60 an hour PER IP. One office or
-               * campus NAT therefore exhausts it for everyone behind it, and the page said
-               * "No download yet — GitHub is rate-limiting this network, so the file list could not
-               * be read." That sentence was true and the conclusion was wrong: the release was
-               * there, and the visitor had no way to reach it.
+               * It offered `releases/latest/download/<fixed name>` whenever the API had failed,
+               * reasoning that a rate-limited visitor should still get the file. The reasoning held
+               * only if a release existed — and in the state this site launched in, rate-limited
+               * with nothing published, the button returned `404 Not Found` to a real visitor.
                *
-               * `releases/latest/download/<name>` is served by a redirect, not by the API, and is
-               * subject to no such limit. The versioned artefact name changes every release, so
-               * `distribute` uploads a copy under a fixed name and this links that.
+               * The URLs are still used; they are just no longer GUESSED. `scripts/resolve-release.mjs`
+               * asks GitHub once at build time and bakes them in, so a feed that cannot be read
+               * falls back to something GitHub actually said rather than to an inference from
+               * silence. Nothing is reconstructed at view time, so there is nothing here.
                *
-               * PRECEDENCE, AND IT MATTERS: when the API answered, believe it — a release that
-               * genuinely carries no installer must still say so rather than offering a link that
-               * 404s. The stable URL is used only where the alternative is nothing at all.
+               * What is left is the one case where even the build could not ask: offer the
+               * repository's releases page, which answers 200 whether or not anything is published.
                */
-              const fallbackKind =
-                kinds.find((kind) => key(kind) === detected && kind.likeliest === true) ??
-                kinds.find((kind) => kind.likeliest === true) ??
-                kinds[0] ??
-                null;
-              const stableUrl =
-                repoName(platform.os) === null || fallbackKind === null
-                  ? null
-                  : `https://github.com/${repoName(platform.os)}/releases/latest/download/${fallbackKind.stableName}`;
-              // ONLY when GitHub could not be asked. When it answered that there is no release,
-              // there is no file, and a link would 404 — see `answered` on the Feed type.
-              const offerStable =
-                feed.status === "unavailable" && feed.answered === false && stableUrl !== null;
+              const offerReleases =
+                feed.status === "unavailable" && feed.offerReleasesPage && releasesUrl !== null;
 
               return (
                 <div
@@ -619,16 +661,17 @@ export function DownloadSection() {
                           {primaryKind.label} · {formatSize(primary.size)} · {primaryKind.hint}
                         </p>
                       </>
-                    ) : offerStable && stableUrl !== null && fallbackKind !== null ? (
+                    ) : offerReleases && releasesUrl !== null ? (
                       <>
-                        <Pill href={stableUrl} variant="solid" size="lg">
-                          Download for {platform.title}
+                        {/* THE RELEASES PAGE, NOT A FILE. Neither this page nor the build could
+                            ask GitHub what exists, so naming a specific installer would be a
+                            guess — and the guess this replaced returned 404 to a real visitor.
+                            `/releases` answers 200 whether or not anything is published, so the
+                            visitor reaches either the files or an honest empty page. */}
+                        <Pill href={releasesUrl} variant="outline" size="lg">
+                          See {platform.title} releases
                         </Pill>
-                        <p className="mt-3 max-w-[44ch] text-sm text-ink-3">
-                          {fallbackKind.label} · {fallbackKind.hint}. This link always points at the
-                          newest release. The version and file size could not be shown because{" "}
-                          {feed.reason.replace(/^GitHub is /, "GitHub is currently ")}
-                        </p>
+                        <p className="mt-3 max-w-[44ch] text-sm text-ink-3">{feed.reason}</p>
                       </>
                     ) : (
                       <>
@@ -659,16 +702,10 @@ export function DownloadSection() {
                               just the one on the button above. Left as plain text only where the
                               feed answered and this file genuinely is not in the release. */}
                           {asset === undefined ? (
-                            offerStable && repoName(platform.os) !== null ? (
-                              <a
-                                href={`https://github.com/${repoName(platform.os)}/releases/latest/download/${kind.stableName}`}
-                                className="text-sm text-ink-2 underline decoration-line-strong underline-offset-4 transition-colors hover:text-ink hover:decoration-ink"
-                              >
-                                {kind.label}
-                              </a>
-                            ) : (
-                              <span className="text-sm text-ink-3">{kind.label}</span>
-                            )
+                            // Plain text, never a constructed link. When the build resolved the
+                            // release, `found` already holds every file with its real URL and
+                            // size; when it could not, no URL here would be more than a guess.
+                            <span className="text-sm text-ink-3">{kind.label}</span>
                           ) : (
                             <a
                               href={asset.browser_download_url}

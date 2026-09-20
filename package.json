@@ -4,15 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
-    "//prebuild": "Refuses to build if a legal document has drifted from its digest, if the pricing page disagrees with the API's packs, or if a page links somewhere that does not exist. npm runs this before `build`, so VERCEL RUNS IT ON EVERY DEPLOY. Both of the first two are factual misstatements to the person least able to check them — a stale privacy policy, and a price the webhook does not charge — which is why they stop a deploy rather than warning.",
-    "prebuild": "npm run verify",
+    "//prebuild": "Refuses to build if a legal document has drifted from its digest, if the pricing page disagrees with the API's packs, or if a page links somewhere that does not exist. npm runs this before `build`, so VERCEL RUNS IT ON EVERY DEPLOY. Both of the first two are factual misstatements to the person least able to check them \u2014 a stale privacy policy, and a price the webhook does not charge \u2014 which is why they stop a deploy rather than warning.",
+    "prebuild": "npm run resolve:release && npm run verify",
     "build": "next build",
-    "verify": "npm run verify:legal && npm run verify:pricing && npm run verify:demo && npm run verify:pages && npm run verify:env",
+    "verify": "npm run verify:legal && npm run verify:pricing && npm run verify:demo && npm run verify:pages && npm run verify:env && npm run verify:release-states",
     "verify:env": "node scripts/check-env-template.mjs",
     "//verify:demo": "The landing page's demo shows the template the grader actually gives out. It is the first VoidCode code a visitor ever sees, and it is a copy because it renders before any request resolves.",
     "verify:demo": "node scripts/check-demo-snippet.mjs",
     "verify:legal": "node scripts/check-legal-digest.mjs",
-    "//verify:pricing": "The page advertises the prices the webhook actually grants. Checked against src/lib/credit-packs.json, which is the application's exported contract — see scripts/check-pricing.mjs for why this is the most consequential check here.",
+    "//verify:pricing": "The page advertises the prices the webhook actually grants. Checked against src/lib/credit-packs.json, which is the application's exported contract \u2014 see scripts/check-pricing.mjs for why this is the most consequential check here.",
     "verify:pricing": "node scripts/check-pricing.mjs",
     "verify:pages": "node scripts/check-pages.mjs",
     "//sync": "Refresh the copies this repository holds of things the application owns: both legal documents, their digests, and the credit-pack contract. Takes the path to a VOIDCODE checkout; there is no default on purpose.",
@@ -22,7 +22,11 @@
     "//lint:ratchet": "Lints and fails only if the problem count exceeds the committed baseline. This repository was extracted with 20 errors that are real, pre-existing and outside the code it was extracted to serve; a blocking lint would make CI red from the first push, and a CI that is always red is one nobody reads. See scripts/lint-ratchet.mjs.",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf .next node_modules"
+    "clean": "rm -rf .next node_modules",
+    "resolve:release": "node scripts/resolve-release.mjs",
+    "pretypecheck": "npm run resolve:release",
+    "predev": "npm run resolve:release",
+    "verify:release-states": "node scripts/check-release-states.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
