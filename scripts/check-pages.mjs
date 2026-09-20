@@ -113,7 +113,7 @@ if (!existsSync(navFile)) {
 // than something not yet built, which is worse.
 //
 // EVERY COMPONENT, NOT JUST THE PAGE FILES. The version of this check in the monorepo read only
-// `app/**/page.tsx`, and a mutant proved the hole: adding "research library" to
+// the page files under `app/` and nothing they import, and a mutant proved the hole: adding "research library" to
 // `PricingPlans.tsx` — where essentially all of the copy actually lives — changed nothing, because
 // a page file is a dozen lines that import sections. Scanning what renders is the only scope that
 // answers the question.

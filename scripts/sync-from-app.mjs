@@ -59,11 +59,13 @@ const DOCUMENTS = ["PrivacyClient.tsx", "TermsClient.tsx"];
 const APP_LEGAL = join(app, "desktop/renderer/src/components/Legal");
 const APP_SHARED = join(app, "desktop/src/shared/legal.ts");
 const APP_PACKS = join(app, "contracts/credit-packs.json");
+const APP_DEMO = join(app, "contracts/demo-snippet.json");
 
 for (const [what, path] of [
   ["the application's legal documents", APP_LEGAL],
   ["the application's shared legal constants", APP_SHARED],
   ["the credit-pack contract", APP_PACKS],
+  ["the demo-snippet contract", APP_DEMO],
 ]) {
   if (!existsSync(path)) {
     console.error(`Cannot find ${what} at ${path}`);
@@ -176,6 +178,9 @@ console.log("  src/lib/legal.ts");
 
 copyFileSync(APP_PACKS, join(root, "src/lib/credit-packs.json"));
 console.log("  src/lib/credit-packs.json");
+
+copyFileSync(APP_DEMO, join(root, "src/lib/demo-snippet.json"));
+console.log("  src/lib/demo-snippet.json");
 
 console.log("");
 console.log("Now run `npm run verify` to check the copies before committing them.");

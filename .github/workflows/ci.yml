@@ -47,6 +47,16 @@ jobs:
       - name: The pages exist, link somewhere, and claim nothing unshipped
         run: npm run verify:pages
 
+      # The first VoidCode code a visitor ever sees. It is a copy — the demo renders before any
+      # request resolves — so it can drift from the template the grader actually gives out.
+      - name: The demo shows real code
+        run: npm run verify:demo
+
+      # A template that asks for a secret implies something uses it. This site holds none, and this
+      # file once documented ten variables while the site read one.
+      - name: The env template matches what the site reads
+        run: npm run verify:env
+
       - run: npm run typecheck
 
       # A RATCHET, NOT A GATE. This repository was extracted with 20 eslint errors and 2 warnings —
