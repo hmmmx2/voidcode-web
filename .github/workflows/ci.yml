@@ -31,12 +31,21 @@ jobs:
 
       - run: npm ci
 
-      # FIRST, AND ON ITS OWN. This is the only failure here that is about what the public reads
-      # rather than about code, and it should be legible in the job list rather than buried inside
-      # a build step. `prebuild` runs it too, so a deploy cannot skip it — this step is what makes
-      # it visible on a pull request, before anyone deploys.
+      # FIRST, AND EACH ON ITS OWN. These are the failures here that are about what the public
+      # reads rather than about code, and they should be legible in the job list rather than buried
+      # inside a build step. `prebuild` runs all three too, so a deploy cannot skip them — these
+      # steps are what make them visible on a pull request, before anyone deploys.
       - name: The legal documents are the ones that were written
         run: npm run verify:legal
+
+      # The most consequential check in this repository. A page advertising a price the webhook does
+      # not charge is a false price published to the public, and the person who finds out is the one
+      # who paid.
+      - name: The prices are the prices the API charges
+        run: npm run verify:pricing
+
+      - name: The pages exist, link somewhere, and claim nothing unshipped
+        run: npm run verify:pages
 
       - run: npm run typecheck
 

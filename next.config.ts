@@ -1,25 +1,25 @@
 import type { NextConfig } from "next";
 
+/**
+ * ── WHAT THIS FILE USED TO CARRY, AND WHY NONE OF IT SURVIVED THE EXTRACTION ─────────────────────
+ *
+ * `output: "standalone"` was here, with a comment saying it was "required to containerise this app
+ * at all". The Dockerfile it existed for is DELETED: it copied `pnpm-lock.yaml`,
+ * `pnpm-workspace.yaml` and `apps/web/package.json`, filtered `@voidcode/web`, and pathed
+ * everything under `/repo/apps/web/` — none of which exists in this repository. It could not have
+ * built, and this site deploys to Vercel, which does not use a Dockerfile.
+ *
+ * `images.remotePatterns` allowed `lh3.googleusercontent.com` and `graph.microsoft.com`. Those were
+ * profile photos for a signed-in UI that moved into the desktop application, and Google and
+ * Microsoft sign-in has since been removed from that too. Nothing here renders a remote image —
+ * checked, not assumed: there is no `next/image` import in `src/` at all. A standing allowance for
+ * two third-party image hosts, held open for a feature that does not exist in any part of this
+ * product, is the kind of setting that looks like a decision.
+ *
+ * What is left is the one thing this site actually uses.
+ */
 const nextConfig: NextConfig = {
-  /**
-   * Required to containerise this app at all.
-   *
-   * Without it, `next build` leaves a `.next` directory that needs the whole
-   * `node_modules` tree at runtime — around 1 GB, and it means the production image
-   * carries every devDependency. `standalone` emits a self-contained server plus
-   * only the modules actually traced as reachable.
-   *
-   * There was no `apps/web` Dockerfile, and this is why: the image would have been
-   * enormous and nobody had a reason to build it.
-   */
-  output: "standalone",
   reactCompiler: true,
-  images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "lh3.googleusercontent.com" },
-      { protocol: "https", hostname: "graph.microsoft.com" },
-    ],
-  },
 };
 
 export default nextConfig;

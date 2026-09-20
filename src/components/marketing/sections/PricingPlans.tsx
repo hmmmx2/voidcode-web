@@ -240,10 +240,25 @@ export function PricingPlans() {
                   Not switched on yet
                 </h3>
                 <p className="mt-3 text-sm leading-relaxed text-ink-2">
-                  Metering and purchases are both off in the shipped configuration, and the rate
-                  behind the estimates is a projection from what the GPU costs to rent rather than a
-                  measured throughput. Nobody is being charged for anything today. When that
-                  changes, the packs above are the sizes it will change to.
+                  {/*
+                      THE MIDDLE CLAUSE WAS FALSE and is corrected. It said the rate behind the
+                      estimates was "a projection from what the GPU costs to rent rather than a
+                      measured throughput". The live pricing row has carried `measured=True` since
+                      2026-09-10 — a rate derived from observed slot occupancy rather than from a
+                      rented card's hourly price divided by a semaphore count.
+
+                      It went unnoticed because the test guarding it searched the whole of
+                      `gpu_pricing.py` for the string `measured=False`, and that table is
+                      APPEND-ONLY: two superseded rows still say it. `scripts/check-pricing.mjs`
+                      now compares this sentence with the live row, in both directions.
+
+                      The other two clauses were checked and are true: `PAYMENTS_ENABLED` and
+                      `GPU_METERING_ENABLED` are both False in the shipped configuration.
+                  */}
+                  Metering and purchases are both off in the shipped configuration, so nobody is
+                  being charged for anything today. The rate behind the estimates comes from
+                  measured throughput rather than a projection. When metering is switched on, the
+                  packs above are the sizes it will change to.
                 </p>
               </div>
               <div className="rounded-cta border border-line bg-void-1 p-8">
