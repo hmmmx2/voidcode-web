@@ -41,11 +41,28 @@ import { Reveal } from "@/components/motion/Reveal";
  *
  * WHAT IT DOES WHEN IT CANNOT ASK
  *
- * No repository configured, rate-limited (60 anonymous requests an hour per IP, which a shared
- * office network can exhaust), offline, or no release published yet: it says which of those
- * happened and, where there is one, links to the releases page. It never draws a download button
- * that leads nowhere — on the section whose whole job is handing someone an installer, a dead
- * primary action is the worst failure available.
+ * No repository configured, offline, or no release published yet: it says which of those happened
+ * and, where there is one, links to the releases page.
+ *
+ * RATE-LIMITED IS THE CASE THAT CHANGED, and it changed because the honest message was still a dead
+ * end. GitHub allows 60 anonymous API requests an hour PER IP, so one office or campus NAT exhausts
+ * it for everyone behind it — and this section said "No download yet. GitHub is rate-limiting this
+ * network, so the file list could not be read." Every word true, and the visitor could not reach a
+ * release that was sitting there.
+ *
+ * So the feed is no longer what the download DEPENDS on. `release.yml`'s `distribute` job publishes
+ * a version-less copy of every installer, and `https://github.com/<repo>/releases/latest/download/
+ * <name>` is a redirect rather than an API call, subject to no limit. When the feed cannot be read,
+ * that address is offered instead — every architecture, not just the likeliest — and the page says
+ * which detail is missing rather than which button is disabled.
+ *
+ * PRECEDENCE, because it is the part that is easy to get wrong: when the feed DID answer, it is
+ * believed. A release that genuinely carries no installer for a platform still says so. The stable
+ * address is used only where the alternative is nothing at all — otherwise a page could offer a
+ * link that 404s and call it an improvement.
+ *
+ * It still never draws a primary action that leads nowhere. What it no longer does is disable one
+ * because a shared network spent its API budget.
  */
 
 /**
@@ -82,6 +99,18 @@ interface Kind {
   /** The installer's extension, shown before a release exists so the row still says something. */
   file: string;
   pattern: RegExp;
+  /**
+   * The VERSION-LESS copy of this installer, which `release.yml`'s `distribute` job uploads
+   * alongside the versioned one. It is the whole reason a download can be offered without an
+   * API call — see `stableUrl` below.
+   */
+  stableName: string;
+  /**
+   * Offered as the primary download when the API cannot be read and the chip is unknowable.
+   * Apple silicon for Mac and 64-bit for Windows: the overwhelming majority of each, and the
+   * other file stays one click away in the list underneath.
+   */
+  likeliest?: true;
 }
 
 /**
@@ -89,6 +118,12 @@ interface Kind {
  *
  * Matched on the asset name from `desktop/electron-builder.yml`'s
  * `${productName}-${version}-${os}-${arch}.${ext}` — so `VoidCode-0.1.0-mac-arm64.dmg`.
+ *
+ * `stableName` is the same file under a name that does not move between releases, so
+ * `https://github.com/<repo>/releases/latest/download/<stableName>` is a permanent address for
+ * "the newest installer". THE NAMES MUST MATCH `release.yml`'s `distribute` job exactly; it
+ * copies each versioned artefact to these names before publishing, and a typo on either side is
+ * a download button that 404s.
  */
 const KINDS: Kind[] = [
   {
@@ -98,6 +133,8 @@ const KINDS: Kind[] = [
     hint: "M1, M2, M3, M4",
     file: ".dmg",
     pattern: /-mac-arm64\.dmg$/,
+    stableName: "VoidCode-macOS-AppleSilicon.dmg",
+    likeliest: true,
   },
   {
     os: "mac",
@@ -106,6 +143,7 @@ const KINDS: Kind[] = [
     hint: "pre-2020 Macs",
     file: ".dmg",
     pattern: /-mac-x64\.dmg$/,
+    stableName: "VoidCode-macOS-Intel.dmg",
   },
   {
     os: "win",
@@ -114,6 +152,8 @@ const KINDS: Kind[] = [
     hint: "most PCs",
     file: ".exe installer",
     pattern: /-win-x64\.exe$/,
+    stableName: "VoidCode-Windows-x64-Setup.exe",
+    likeliest: true,
   },
   {
     os: "win",
@@ -122,6 +162,7 @@ const KINDS: Kind[] = [
     hint: "Snapdragon, Surface Pro X",
     file: ".exe installer",
     pattern: /-win-arm64\.exe$/,
+    stableName: "VoidCode-Windows-ARM64-Setup.exe",
   },
 ];
 
@@ -130,11 +171,21 @@ const PLATFORMS = [
     os: "mac" as const,
     title: "macOS",
     what: "A disk image you drag into Applications. Apple silicon and Intel are separate files.",
-    /** The prompt this platform will show, and the exact way past it. */
+    /**
+     * EVERY STEP FROM THE CLICK TO A RUNNING APP, in order, with nothing assumed.
+     *
+     * These began at "open the .dmg", which skipped the two places people actually stop: finding
+     * the file after the browser saves it, and the refusal on first launch. An unsigned app does
+     * not present as "unsigned" — macOS says the developer "cannot be verified", which reads as a
+     * warning about the software rather than a step to take. Anyone who does not know the way past
+     * it has downloaded 200 MB and reached a dead end.
+     */
     gate: [
-      "Open the .dmg and drag VoidCode to Applications.",
-      "The app is not signed with an Apple developer certificate, so the first launch is refused.",
-      "Open System Settings › Privacy & Security, find the message about VoidCode, and choose Open Anyway.",
+      "Press the download button. The file is about 200 MB and lands in your Downloads folder.",
+      "Double-click VoidCode-macOS-AppleSilicon.dmg, then drag the VoidCode icon onto Applications.",
+      "Open Applications and double-click VoidCode. macOS refuses the first launch and says the developer cannot be verified — this is expected, because the app is not signed with a paid Apple certificate.",
+      "Open System Settings › Privacy & Security, scroll to the message about VoidCode, and choose Open Anyway. Confirm once more when asked.",
+      "It opens. Nothing else to install — Python and every problem ship inside the app, and it works with no network.",
     ],
     verify: "shasum -a 256 VoidCode-*.dmg",
     /** How to tell which file you need, when the browser cannot. */
@@ -145,9 +196,11 @@ const PLATFORMS = [
     title: "Windows",
     what: "An installer that sets the app up for your user account. No administrator rights needed.",
     gate: [
-      "Run the .exe.",
-      "The installer is not signed, so SmartScreen shows “Windows protected your PC”.",
-      "Choose More info, then Run anyway. Nothing else is needed — the app carries its own Python runtime.",
+      "Press the download button. The file is about 150 MB and lands in your Downloads folder.",
+      "Double-click VoidCode-Windows-x64-Setup.exe. Windows shows a blue “Windows protected your PC” box — this is expected, because the installer is not signed with a paid certificate.",
+      "Choose More info, then Run anyway. The Run anyway button only appears after More info, which is the step people miss.",
+      "Follow the installer. It installs for your account only, so no administrator password is needed.",
+      "It opens. Nothing else to install — Python and every problem ship inside the app, and it works with no network.",
     ],
     verify: "Get-FileHash VoidCode-*.exe -Algorithm SHA256",
     which: "Settings › System › About, under “System type”. ARM only applies to Snapdragon and Surface Pro X machines.",
@@ -472,6 +525,35 @@ export function DownloadSection() {
                 available.find((kind) => key(kind) === detected) ?? available[0] ?? null;
               const primary = primaryKind === null ? undefined : found.get(key(primaryKind));
 
+              /**
+               * A download that does not need the API to have answered.
+               *
+               * WHY THIS EXISTS. The feed is `api.github.com` read from the VISITOR'S browser, and
+               * unauthenticated requests there are limited to 60 an hour PER IP. One office or
+               * campus NAT therefore exhausts it for everyone behind it, and the page said
+               * "No download yet — GitHub is rate-limiting this network, so the file list could not
+               * be read." That sentence was true and the conclusion was wrong: the release was
+               * there, and the visitor had no way to reach it.
+               *
+               * `releases/latest/download/<name>` is served by a redirect, not by the API, and is
+               * subject to no such limit. The versioned artefact name changes every release, so
+               * `distribute` uploads a copy under a fixed name and this links that.
+               *
+               * PRECEDENCE, AND IT MATTERS: when the API answered, believe it — a release that
+               * genuinely carries no installer must still say so rather than offering a link that
+               * 404s. The stable URL is used only where the alternative is nothing at all.
+               */
+              const fallbackKind =
+                kinds.find((kind) => key(kind) === detected && kind.likeliest === true) ??
+                kinds.find((kind) => kind.likeliest === true) ??
+                kinds[0] ??
+                null;
+              const stableUrl =
+                repoName(platform.os) === null || fallbackKind === null
+                  ? null
+                  : `https://github.com/${repoName(platform.os)}/releases/latest/download/${fallbackKind.stableName}`;
+              const offerStable = feed.status === "unavailable" && stableUrl !== null;
+
               return (
                 <div
                   key={platform.os}
@@ -501,6 +583,17 @@ export function DownloadSection() {
                           {primaryKind.label} · {formatSize(primary.size)} · {primaryKind.hint}
                         </p>
                       </>
+                    ) : offerStable && stableUrl !== null && fallbackKind !== null ? (
+                      <>
+                        <Pill href={stableUrl} variant="solid" size="lg">
+                          Download for {platform.title}
+                        </Pill>
+                        <p className="mt-3 max-w-[44ch] text-sm text-ink-3">
+                          {fallbackKind.label} · {fallbackKind.hint}. This link always points at the
+                          newest release. The version and file size could not be shown because{" "}
+                          {feed.reason.replace(/^GitHub is /, "GitHub is currently ")}
+                        </p>
+                      </>
                     ) : (
                       <>
                         <Pill href="#download" variant="outline" size="lg" aria-disabled="true">
@@ -524,8 +617,22 @@ export function DownloadSection() {
                       const asset = found.get(key(kind));
                       return (
                         <li key={kind.arch} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                          {/* Linked when the feed named the file, and ALSO when the feed could not
+                              be read at all — the stable address works either way, and a visitor on
+                              a rate-limited network needs the other architecture reachable too, not
+                              just the one on the button above. Left as plain text only where the
+                              feed answered and this file genuinely is not in the release. */}
                           {asset === undefined ? (
-                            <span className="text-sm text-ink-3">{kind.label}</span>
+                            offerStable && repoName(platform.os) !== null ? (
+                              <a
+                                href={`https://github.com/${repoName(platform.os)}/releases/latest/download/${kind.stableName}`}
+                                className="text-sm text-ink-2 underline decoration-line-strong underline-offset-4 transition-colors hover:text-ink hover:decoration-ink"
+                              >
+                                {kind.label}
+                              </a>
+                            ) : (
+                              <span className="text-sm text-ink-3">{kind.label}</span>
+                            )
                           ) : (
                             <a
                               href={asset.browser_download_url}
