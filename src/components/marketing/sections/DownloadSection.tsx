@@ -223,7 +223,20 @@ interface Release {
 /** One platform's feed. The two are held separately so one failing cannot blank the other. */
 type Feed =
   | { status: "loading" }
-  | { status: "unavailable"; reason: string }
+  /**
+   * `answered` separates the two cases that look identical and must not be treated alike.
+   *
+   * TRUE means GitHub replied and said there is nothing — a 404 for a repository with no release,
+   * or a release carrying no installer for this platform. Believe it: there is no file, and any
+   * link would 404.
+   *
+   * FALSE means the question could not be asked — rate-limited, offline, or an error. A release may
+   * well be sitting there, so the version-less address is offered instead of a dead button.
+   *
+   * Without this distinction the fallback would have offered a download before the first release
+   * existed, which is the precise failure the fallback was added to avoid, pointed the other way.
+   */
+  | { status: "unavailable"; reason: string; answered: boolean }
   | { status: "ready"; release: Release; found: Map<string, Asset> };
 
 type State = { mac: Feed; win: Feed };
@@ -340,6 +353,8 @@ export function DownloadSection() {
           status: "unavailable",
           reason:
             "The first release has not been published yet, so there is nothing to download here.",
+          // No repository configured. Nothing can be constructed, authoritative or not.
+          answered: true,
         };
       }
 
@@ -350,18 +365,26 @@ export function DownloadSection() {
             headers: { accept: "application/vnd.github+json" },
           });
           if (response.status === 404) {
-            return { status: "unavailable", reason: "No release has been published yet." };
+            // GitHub ANSWERED: this repository has no published release. Authoritative.
+            return {
+              status: "unavailable",
+              reason: "No release has been published yet.",
+              answered: true,
+            };
           }
           if (response.status === 403 || response.status === 429) {
             return {
               status: "unavailable",
               reason: "GitHub is rate-limiting this network, so the file list could not be read.",
+              // Could not ask. A release may be there; offer the version-less address.
+              answered: false,
             };
           }
           if (!response.ok) {
             return {
               status: "unavailable",
               reason: "The release list could not be read just now.",
+              answered: false,
             };
           }
           release = (await response.json()) as Release;
@@ -370,6 +393,7 @@ export function DownloadSection() {
           return {
             status: "unavailable",
             reason: "Could not reach GitHub to read the release list.",
+            answered: false,
           };
         }
       }
@@ -386,6 +410,9 @@ export function DownloadSection() {
         return {
           status: "unavailable",
           reason: "The latest release does not carry an installer for this platform.",
+          // GitHub answered and the file is not in the release. Authoritative — a version-less
+          // link would point at the same absent file.
+          answered: true,
         };
       }
       return { status: "ready", release, found };
@@ -405,7 +432,13 @@ export function DownloadSection() {
       const settle = (result: PromiseSettledResult<Feed>): Feed =>
         result.status === "fulfilled"
           ? result.value
-          : { status: "unavailable", reason: "The release list could not be read just now." };
+          : {
+              status: "unavailable",
+              reason: "The release list could not be read just now.",
+              // A rejection here means `loadOne` threw rather than resolving a refusal, so nothing
+              // was learned about whether a release exists. Not authoritative.
+              answered: false,
+            };
       setState({ mac: settle(mac), win: settle(win) });
     });
 
@@ -552,7 +585,10 @@ export function DownloadSection() {
                 repoName(platform.os) === null || fallbackKind === null
                   ? null
                   : `https://github.com/${repoName(platform.os)}/releases/latest/download/${fallbackKind.stableName}`;
-              const offerStable = feed.status === "unavailable" && stableUrl !== null;
+              // ONLY when GitHub could not be asked. When it answered that there is no release,
+              // there is no file, and a link would 404 — see `answered` on the Feed type.
+              const offerStable =
+                feed.status === "unavailable" && feed.answered === false && stableUrl !== null;
 
               return (
                 <div
