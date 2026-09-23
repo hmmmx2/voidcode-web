@@ -1,5 +1,5 @@
 {
-  "//": "What this repository was extracted with. See scripts/lint-ratchet.mjs for why the count is tolerated rather than fixed, and why lowering it is part of the same commit as a fix. Only meaningful alongside a committed package-lock.json: the same source linted 18 errors under the monorepo's resolved plugin versions and 20 under a fresh install.",
+  "//": "What this repository was extracted with. See scripts/lint-ratchet.mjs for why the count is tolerated rather than fixed, and why lowering it is part of the same commit as a fix. Only meaningful alongside a committed package-lock.json: the same source linted 18 errors under the monorepo's resolved plugin versions and 20 under a fresh install. The 2 warnings it was baselined with resolve to 0 under that same fresh `npm ci`, so CI reported 20/0 and the ratchet failed on the improvement — this lowers warnings to 0 to match, in the commit that records it.",
   "errors": 20,
-  "warnings": 2
+  "warnings": 0
 }
