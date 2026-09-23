@@ -68,11 +68,14 @@ const TARGET = process.env.VOIDCODE_RELEASE_OUT ?? join(root, "src", "generated"
  */
 const API_BASE = process.env.VOIDCODE_RELEASE_API_BASE ?? "https://api.github.com";
 
-/** The same two variables the page reads. Absent means "not configured", not "broken". */
-const REPOS = {
-  mac: (process.env.NEXT_PUBLIC_RELEASES_REPO_MAC ?? "").trim(),
-  win: (process.env.NEXT_PUBLIC_RELEASES_REPO_WIN ?? "").trim(),
-};
+/**
+ * ONE PUBLIC REPOSITORY, HARDCODED, matching DownloadSection.tsx. VoidCode ships every installer
+ * from `hmmmx2/voidcode`, so both platforms resolve the same release. This was two env-configured
+ * repositories until the installers were consolidated into one; the indirection is gone because a
+ * misconfigured Vercel value silently blanked the download page.
+ */
+const REPO = "hmmmx2/voidcode";
+const REPOS = { mac: REPO, win: REPO };
 
 /**
  * The version-less names `release.yml`'s `distribute` job publishes.

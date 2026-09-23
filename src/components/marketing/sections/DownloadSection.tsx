@@ -75,25 +75,21 @@ import baked from "@/generated/release.json";
  */
 
 /**
- * ONE REPOSITORY PER PLATFORM, and that is a behaviour change rather than plumbing.
+ * ONE PUBLIC REPOSITORY, HARDCODED — and that is the point.
  *
- * The installers are published to two separate repositories -- one for macOS, one for Windows --
- * because they are what a person downloads and nothing else needs to be in those repositories at
- * all. This section used to read a single `NEXT_PUBLIC_RELEASES_REPO`.
- *
- * WHAT THAT FIXES. With one feed, a single 403 blanked the whole section: GitHub rate-limits
- * anonymous requests at 60 an hour PER IP, which a shared office network exhausts easily, and the
- * failure took both platforms' download buttons with it. Two feeds are fetched independently and
- * held in independent state, so a rate-limited macOS feed no longer hides the Windows installer.
- *
- * The old single-repository variable is DELETED rather than left as a fallback. A fallback would be
- * read by a deployment that set only the old name, which would then serve Windows visitors macOS
- * disk images -- and it would look configured.
+ * VoidCode publishes every installer from `hmmmx2/voidcode` now (see that repo's `release.yml`), so
+ * both platforms read the same release. This used to be two env-configured repositories,
+ * `NEXT_PUBLIC_RELEASES_REPO_MAC`/`_WIN`, back when the installers lived in `voidcode-mac` and
+ * `voidcode-windows`. That indirection is gone on purpose: there is nothing left to configure, and a
+ * misconfigured Vercel value — the wrong repository, an empty value, or a `NEXT_PUBLIC_` variable
+ * saved as a "Secret" (which Vercel then refuses to expose to the browser) — silently blanked the
+ * download and was invisible until someone clicked. A constant cannot be misconfigured, and this
+ * value is not a secret: it is a public repository name the browser is meant to see.
  */
-const REPOS = {
-  mac: (process.env.NEXT_PUBLIC_RELEASES_REPO_MAC ?? "").trim(),
-  win: (process.env.NEXT_PUBLIC_RELEASES_REPO_WIN ?? "").trim(),
-} as const;
+// `: string`, not the inferred literal, so the placeholder guard in `repoName` below
+// (`value !== "OWNER/REPO"`) stays a real string comparison rather than a no-overlap type error.
+const REPO: string = "hmmmx2/voidcode";
+const REPOS = { mac: REPO, win: REPO } as const;
 
 /** Separate keys, so one platform's cached feed is never served as the other's. */
 const CACHE_KEY = { mac: "voidcode:release:mac", win: "voidcode:release:win" } as const;

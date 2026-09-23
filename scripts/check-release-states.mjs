@@ -51,9 +51,9 @@ const run = () =>
       env: {
         ...process.env,
         VOIDCODE_RELEASE_API_BASE: `http://127.0.0.1:${PORT}`,
-      VOIDCODE_RELEASE_OUT: TARGET,
-        NEXT_PUBLIC_RELEASES_REPO_MAC: "owner/mac",
-        NEXT_PUBLIC_RELEASES_REPO_WIN: "owner/win",
+        VOIDCODE_RELEASE_OUT: TARGET,
+        // The repository is a constant in resolve-release.mjs now (one public repo, not two env
+        // vars), so nothing points it here. The stub answers every path, so any repo name reaches it.
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
